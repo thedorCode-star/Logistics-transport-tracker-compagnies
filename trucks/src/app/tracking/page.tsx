@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import socket from '@/lib/socket';
 
 interface Shipment {
   id: string;
-  company: string;
+  company: {
+    name: string;
+  };
   description: string;
   status: string;
   date: string;
@@ -32,8 +35,15 @@ export default function Tracking() {
 
   useEffect(() => {
     fetchShipments();
-    const interval = setInterval(fetchShipments, 5000); // Poll every 5 seconds for real-time updates
-    return () => clearInterval(interval);
+
+    // Listen for real-time updates
+    socket.on('shipment-updated', (updatedShipment: Shipment) => {
+      setShipments(prev => prev.map(s => s.id === updatedShipment.id ? updatedShipment : s));
+    });
+
+    return () => {
+      socket.off('shipment-updated');
+    };
   }, []);
 
   const addShipment = async () => {
@@ -58,12 +68,15 @@ export default function Tracking() {
 
   const updateStatus = async (id: string, status: string) => {
     try {
-      await fetch(`/api/shipments/${id}`, {
+      const res = await fetch(`/api/shipments/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      await fetchShipments(); // Refresh list
+      if (res.ok) {
+        const updatedShipment = await res.json();
+        socket.emit('update-shipment', updatedShipment);
+      }
     } catch (error) {
       console.error('Failed to update status:', error);
     }
@@ -120,7 +133,7 @@ export default function Tracking() {
                 <div key={shipment.id} className="border p-4 rounded flex justify-between items-center">
                   <div>
                     <p><strong>ID:</strong> {shipment.id}</p>
-                    <p><strong>Company:</strong> {shipment.company}</p>
+                    <p><strong>Company:</strong> {shipment.company.name}</p>
                     <p><strong>Description:</strong> {shipment.description}</p>
                     <p><strong>Date:</strong> {shipment.date}</p>
                   </div>

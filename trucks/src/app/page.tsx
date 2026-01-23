@@ -1,14 +1,47 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { companies } from "@/data/companies";
+// import { companies } from "@/data/companies";
 // import { CheckCircle, ExternalLink, X } from 'lucide-react';
 
+interface Company {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  complianceCertified: boolean;
+}
+
 export default function Home() {
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedCompany, setSelectedCompany] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchCompanies = async () => {
+      try {
+        const res = await fetch('/api/companies');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setCompanies(data);
+        } else {
+          console.error('Fetched data is not an array:', data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch companies:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCompanies();
+  }, []);
 
   const filteredCompanies = useMemo(() => {
     return companies.filter(company => {
@@ -17,13 +50,21 @@ export default function Home() {
       const matchesCategory = selectedCategory === '' || company.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [searchTerm, selectedCategory]);
+  }, [searchTerm, selectedCategory, companies]);
 
   const categories = Array.from(new Set(companies.map(c => c.category)));
 
   const verifyCertification = (company: any) => {
     setSelectedCompany(company);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl">Loading companies...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="py-12 px-4 sm:px-6 lg:px-8">
