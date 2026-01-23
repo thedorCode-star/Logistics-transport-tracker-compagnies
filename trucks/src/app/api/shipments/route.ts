@@ -6,6 +6,11 @@ export async function GET() {
     const shipments = await prisma.shipment.findMany({
       include: {
         company: true,
+        statusHistory: {
+          orderBy: {
+            changedAt: 'desc',
+          },
+        },
       },
     });
     return NextResponse.json(shipments);
@@ -37,6 +42,19 @@ export async function POST(request: NextRequest) {
       },
       include: {
         company: true,
+        statusHistory: {
+          orderBy: {
+            changedAt: 'desc',
+          },
+        },
+      },
+    });
+
+    // Create initial status history
+    await prisma.shipmentStatusHistory.create({
+      data: {
+        shipmentId: newShipment.id,
+        status: status,
       },
     });
 

@@ -12,16 +12,25 @@ interface Shipment {
   description: string;
   status: string;
   date: string;
+  statusHistory: {
+    id: string;
+    status: string;
+    changedAt: string;
+  }[];
 }
 
 export default function Tracking() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [newShipment, setNewShipment] = useState({
     company: '',
     description: '',
     status: 'Pending'
   });
   const [loading, setLoading] = useState(false);
+  const [expandedShipment, setExpandedShipment] = useState<string | null>(null);
+
+  const statuses = ['Pending', 'Loading', 'In Transit', 'Delayed', 'Delivered', 'Cancelled'];
 
   const fetchShipments = async () => {
     try {
@@ -33,8 +42,19 @@ export default function Tracking() {
     }
   };
 
+  const fetchCompanies = async () => {
+    try {
+      const res = await fetch('/api/companies');
+      const data = await res.json();
+      setCompanies(data);
+    } catch (error) {
+      console.error('Failed to fetch companies:', error);
+    }
+  };
+
   useEffect(() => {
     fetchShipments();
+    fetchCompanies();
 
     // Listen for real-time updates
     socket.on('shipment-updated', (updatedShipment: Shipment) => {
@@ -74,8 +94,8 @@ export default function Tracking() {
         body: JSON.stringify({ status })
       });
       if (res.ok) {
-        const updatedShipment = await res.json();
-        socket.emit('update-shipment', updatedShipment);
+        // Refetch all shipments to get updated data including history
+        await fetchShipments();
       }
     } catch (error) {
       console.error('Failed to update status:', error);
@@ -93,13 +113,16 @@ export default function Tracking() {
         <div className="bg-white p-6 rounded-lg shadow-md mb-8">
           <h2 className="text-2xl font-semibold mb-4">Add New Shipment</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <input
-              type="text"
-              placeholder="Company Name"
+            <select
               value={newShipment.company}
               onChange={(e) => setNewShipment({ ...newShipment, company: e.target.value })}
               className="border p-2 rounded"
-            />
+            >
+              <option value="">Select Company</option>
+              {companies.map(company => (
+                <option key={company.id} value={company.name}>{company.name}</option>
+              ))}
+            </select>
             <input
               type="text"
               placeholder="Description"
@@ -112,10 +135,9 @@ export default function Tracking() {
               onChange={(e) => setNewShipment({ ...newShipment, status: e.target.value })}
               className="border p-2 rounded"
             >
-              <option value="Pending">Pending</option>
-              <option value="In Transit">In Transit</option>
-              <option value="Delivered">Delivered</option>
-              <option value="Delayed">Delayed</option>
+              {statuses.map(status => (
+                <option key={status} value={status}>{status}</option>
+              ))}
             </select>
           </div>
           <button onClick={addShipment} disabled={loading} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50">
@@ -130,32 +152,63 @@ export default function Tracking() {
           ) : (
             <div className="space-y-4">
               {shipments.map((shipment) => (
-                <div key={shipment.id} className="border p-4 rounded flex justify-between items-center">
-                  <div>
-                    <p><strong>ID:</strong> {shipment.id}</p>
-                    <p><strong>Company:</strong> {shipment.company.name}</p>
-                    <p><strong>Description:</strong> {shipment.description}</p>
-                    <p><strong>Date:</strong> {shipment.date}</p>
+                <div key={shipment.id} className="border p-4 rounded">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <p><strong>ID:</strong> {shipment.id}</p>
+                      <p><strong>Company:</strong> {shipment.company.name}</p>
+                      <p><strong>Description:</strong> {shipment.description}</p>
+                      <p><strong>Date:</strong> {shipment.date}</p>
+                    </div>
+                    <div>
+                      <select
+                        value={shipment.status}
+                        onChange={(e) => updateStatus(shipment.id, e.target.value)}
+                        className="border p-2 rounded mr-2"
+                      >
+                        {statuses.map(status => (
+                          <option key={status} value={status}>{status}</option>
+                        ))}
+                      </select>
+                      <span className={`px-2 py-1 rounded text-sm ${
+                        shipment.status === 'Delivered' ? 'bg-green-200 text-green-800' :
+                        shipment.status === 'In Transit' ? 'bg-blue-200 text-blue-800' :
+                        shipment.status === 'Delayed' ? 'bg-red-200 text-red-800' :
+                        shipment.status === 'Cancelled' ? 'bg-gray-200 text-gray-800' :
+                        'bg-yellow-200 text-yellow-800'
+                      }`}>
+                        {shipment.status}
+                      </span>
+                    </div>
                   </div>
                   <div>
-                    <select
-                      value={shipment.status}
-                      onChange={(e) => updateStatus(shipment.id, e.target.value)}
-                      className="border p-2 rounded mr-2"
+                    <div className="text-sm text-gray-600 mb-2">
+                      <strong>Status History:</strong>
+                      {shipment.statusHistory.length > 0 ? (
+                        <span className="ml-2">
+                          Last updated: {new Date(shipment.statusHistory[0].changedAt).toLocaleString()}
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-gray-400">No history yet</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setExpandedShipment(expandedShipment === shipment.id ? null : shipment.id)}
+                      className="text-blue-600 hover:underline text-sm"
                     >
-                      <option value="Pending">Pending</option>
-                      <option value="In Transit">In Transit</option>
-                      <option value="Delivered">Delivered</option>
-                      <option value="Delayed">Delayed</option>
-                    </select>
-                    <span className={`px-2 py-1 rounded text-sm ${
-                      shipment.status === 'Delivered' ? 'bg-green-200 text-green-800' :
-                      shipment.status === 'In Transit' ? 'bg-blue-200 text-blue-800' :
-                      shipment.status === 'Delayed' ? 'bg-red-200 text-red-800' :
-                      'bg-yellow-200 text-yellow-800'
-                    }`}>
-                      {shipment.status}
-                    </span>
+                      {expandedShipment === shipment.id ? 'Hide' : 'View'} Full History ({shipment.statusHistory.length} changes)
+                    </button>
+                    {expandedShipment === shipment.id && (
+                      <div className="mt-2 border-t pt-2">
+                        <ul className="list-disc list-inside text-sm space-y-1">
+                          {shipment.statusHistory.map((history) => (
+                            <li key={history.id}>
+                              <span className="font-medium">{history.status}</span> - {new Date(history.changedAt).toLocaleString()}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
