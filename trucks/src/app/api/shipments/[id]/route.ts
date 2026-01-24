@@ -16,6 +16,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Shipment not found' }, { status: 404 });
     }
 
+    // Prevent updating status if shipment is already delivered
+    if (currentShipment.status.toLowerCase() === 'delivered') {
+      return NextResponse.json({ error: 'Cannot update status: shipment is already delivered' }, { status: 400 });
+    }
+
     const updatedShipment = await prisma.shipment.update({
       where: { id },
       data: { status },
@@ -35,6 +40,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         data: {
           shipmentId: id,
           status: status,
+          changedAt: new Date(),
         },
       });
     }
